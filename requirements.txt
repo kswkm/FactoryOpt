@@ -1,4 +1,17 @@
-Flask==3.0.0
-python-dateutil==2.8.2
-Werkzeug==3.0.1
-pandas==2.1.3
+# --- Dashboard Server (Flask) ---
+flask>=3.0
+requests>=2.31
+
+# --- API Server (FastAPI) ---
+fastapi>=0.110
+uvicorn[standard]>=0.29
+
+# --- Database ---
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+
+# --- Data Processing ---
+pandas>=2.0
+
+# --- Environment / Config ---
+python-dotenv>=1.0

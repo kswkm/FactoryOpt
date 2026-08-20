@@ -2,6 +2,26 @@
 
 공장 설비의 가용률(availability), 불량률(defect_rate), 다운타임(downtime_min)을 실시간으로 모니터링하는 대시보드 시스템입니다. CSV 기반 프로토타입에서 시작하여 PostgreSQL + FastAPI 기반의 API 분리 아키텍처로 전환했습니다.
 
+<br>
+
+## 🛠️ Tech Stacks
+
+<div style="margin: ; text-align: left;">
+  <img src="https://img.shields.io/badge/Python-3776AB?style=plastic&logo=python&logoColor=white">
+  <img src="https://img.shields.io/badge/Flask-000000?style=plastic&logo=flask&logoColor=white">
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=plastic&logo=fastapi&logoColor=white">
+  <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=plastic&logo=postgresql&logoColor=white">
+  <br/>
+  <img src="https://img.shields.io/badge/SQLAlchemy-D71F00?style=plastic&logo=python&logoColor=white">
+  <img src="https://img.shields.io/badge/Pandas-150458?style=plastic&logo=pandas&logoColor=white">
+  <img src="https://img.shields.io/badge/pgAdmin-336791?style=plastic&logo=postgresql&logoColor=white">
+  <img src="https://img.shields.io/badge/HTML5-E34F26?style=plastic&logo=html5&logoColor=white">
+  <br/>
+  <img src="https://img.shields.io/badge/Git-F05032?style=plastic&logo=git&logoColor=white">
+  <img src="https://img.shields.io/badge/Github-181717?style=plastic&logo=github&logoColor=white">
+  <img src="https://img.shields.io/badge/Windows-0078D6?style=plastic&logo=windows&logoColor=white">
+</div>
+
 ---
 
 ## 1. 기술 스택
@@ -11,6 +31,7 @@
 | Frontend/Dashboard | Flask, Jinja2 | 대시보드 렌더링 (`run.py`) |
 | Backend API | FastAPI, Uvicorn | DB 접근을 전담하는 API 서버 (`api_server.py`) |
 | Database | PostgreSQL | 설비 가동 데이터 저장 (정형/시계열) |
+| DB 관리 | pgAdmin | GUI 기반 데이터 조회/편집 |
 | ORM/DB 연동 | SQLAlchemy, psycopg2 | DB 커넥션 및 쿼리 |
 | 데이터 처리 | pandas | CSV 파싱, 집계, DB 마이그레이션 |
 | 통신 | requests | Flask ↔ FastAPI 간 내부 HTTP 호출 |
@@ -23,7 +44,7 @@
 
 ### 왜 CSV → PostgreSQL인가
 초기에는 `pandas.read_csv`로 정적 파일을 읽는 구조였으나, 다음 이유로 관계형 DB로 전환했습니다.
-- 데이터가 `machine_id / date_str / availability / defect_rate / downtime_min` 등 명확한 스키마를 가진 정형 데이터라 관계형 모델에 적합
+- 데이터가 `machine_id / date / plan_min / run_min / downtime_min` 등 명확한 스키마를 가진 정형 데이터라 관계형 모델에 적합
 - 다중 클라이언트(대시보드, 향후 모바일/리포트 도구)가 동시에 같은 데이터를 조회해야 하는 요구를 CSV 파일 하나로는 감당할 수 없음
 - 인덱스, 트랜잭션, 동시성 제어 등 실무 표준 기능이 필요
 
@@ -34,7 +55,7 @@
 
 ### 왜 DB를 API(FastAPI)로 감쌌는가 — 직접 연결 대신 API 분리
 - **자격증명 최소 노출**: DB 비밀번호를 대시보드 서버(`run.py`)가 아닌 API 서버 한 곳에만 보관
-- **접근 통제 지점 확보**: API Key/JWT 인증, Rate Limiting을 API 레벨에서 적용 가능 (대시보드가 여러 개로 늘어나도 인증 로직 중복 없음)
+- **접근 통제 지점 확보**: API Key/JWT 인증, Rate Limiting을 API 레벨에서 적용 가능
 - **WAF 적용 가능성**: 내부 DB에는 WAF를 붙일 수 없지만, API 앞단에는 리버스 프록시 + WAF를 배치할 수 있음
 - **확장성**: 향후 모바일 앱, 다른 대시보드가 늘어나도 동일 API를 재사용
 - FastAPI는 비동기 처리와 Swagger 자동 문서화(`/docs`)를 기본 제공해 API 서버로 적합
@@ -59,7 +80,7 @@
 
 **계층별 책임 분리**
 - **PostgreSQL**: `machine_uptime` 테이블에 원본 데이터 저장
-- **api_server.py**: DB 접근을 전담하는 유일한 컴포넌트. `/api/machine-uptime`, `/api/summary`, `/health` 제공
+- **api_server.py**: DB 접근을 전담하는 유일한 컴포넌트. `/api/machine-uptime`, `/api/summary`, `/health` 제공, Swagger(`/docs`) 자동 문서화
 - **run.py**: DB에 직접 접속하지 않고 API만 호출, HTML 렌더링과 프론트용 JSON 응답만 담당
 - **migrate_csv_to_db.py**: 기존 CSV 데이터를 PostgreSQL로 1회 이전하는 마이그레이션 스크립트
 
@@ -74,7 +95,8 @@
 | 설비별 필터 조회 | `GET /api/machine-uptime?machine_id=...` | 특정 설비 데이터만 필터링 |
 | 요약 통계 | `GET /api/summary` | 평균 가용률/불량률, 총 다운타임, 데이터 기간 등 집계 |
 | 헬스체크 | `GET /health` (FastAPI) | DB 연결 상태 확인 |
-| 캐시 무효화 | `GET /api/refresh` | 캐시된 데이터 강제 재조회 |
+| 캐시 무효화 | `GET /api/refresh` | DB 값을 수정한 뒤 캐시된 데이터를 강제로 재조회 |
+| API 문서 자동화 | `GET /docs` (FastAPI Swagger) | 엔드포인트별 요청/응답 스펙을 브라우저에서 바로 테스트 |
 
 ---
 
@@ -90,11 +112,27 @@
 
 ### `winget install PostgreSQL.PostgreSQL` → "입력 조건과 일치하는 패키지를 찾을 수 없음"
 - **원인**: winget 패키지 ID가 버전별로 세분화(`PostgreSQL.PostgreSQL.17` 등)되어 있어 상위 ID만으로는 매칭 실패
-- **해결**: `winget search postgresql`로 정확한 ID 확인 후 `-e`(정확히 일치) 옵션과 함께 재시도. 지속 실패 시 [postgresql.org](https://www.postgresql.org/download/windows/) 공식 인스톨러로 우회 설치
+- **해결**: `winget search postgresql`로 정확한 ID 확인 후 `-e`(정확히 일치) 옵션과 함께 재시도
+
+### `psql`이 명령어로 인식되지 않음
+- **원인**: `psql.exe`가 설치된 `C:\Program Files\PostgreSQL\<버전>\bin` 경로가 시스템 PATH에 등록되지 않음
+- **해결**: `[Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\Program Files\PostgreSQL\17\bin", "User")` 실행 후 터미널(VSCode 포함) 재시작. `where psql`로 인식 여부 확인
+
+### `psql -U postgres` 접속 시 비밀번호를 몰라서 인증 실패
+- **원인**: 설치 과정에서 지정한 superuser 비밀번호를 분실/미기억
+- **해결**: `pg_hba.conf`의 인증 방식을 임시로 `scram-sha-256` → `trust`로 변경 → PostgreSQL 서비스 재시작 → 비밀번호 없이 접속 → `ALTER USER postgres WITH PASSWORD '새비밀번호';` 실행 → `pg_hba.conf`를 원래대로 되돌리고 서비스 재시작 (보안상 필수)
+
+### `Restart-Service`가 권한 오류로 실행되지 않음
+- **원인**: Windows 서비스 제어는 관리자 권한이 필요한데 일반 권한 PowerShell에서 실행
+- **해결**: PowerShell/VSCode를 관리자 권한으로 재실행하거나, `services.msc` GUI에서 서비스를 우클릭 → 다시 시작
+
+### DB 값을 수정해도 대시보드/API 응답에 반영되지 않음
+- **원인**: `run.py`, `api_server.py`가 데이터를 최초 조회 시점에 메모리 캐시(`_data_cache`)로 저장해두기 때문
+- **해결**: `/api/refresh` 엔드포인트 호출로 캐시를 초기화하거나 서버 재시작
 
 ### DB 자격증명 관리
 - **원인**: 초기 구조에서 DB 연결 문자열을 코드에 하드코딩할 위험
-- **해결**: `.env` + `python-dotenv`로 분리, `.gitignore`에 `.env` 등록. 만약 이미 git에 커밋된 적이 있다면 `git rm --cached .env` 및 히스토리 제거(`git filter-repo`) 후 자격증명 교체
+- **해결**: `.env` + `python-dotenv`로 분리, `.gitignore`에 `.env` 등록. 이미 git에 커밋된 적이 있다면 `git rm --cached .env` 및 히스토리 제거(`git filter-repo`) 후 자격증명 교체
 
 ---
 
@@ -112,8 +150,20 @@ python -m pip install fastapi "uvicorn[standard]" sqlalchemy psycopg2-binary pyt
 
 ### PostgreSQL 준비
 ```powershell
-# DB/테이블 생성 (psql -U postgres 접속 후)
+psql -U postgres
+```
+```sql
 CREATE DATABASE factoryopt;
+\c factoryopt
+
+CREATE TABLE machine_uptime (
+    id SERIAL PRIMARY KEY,
+    machine_id VARCHAR(50) NOT NULL,
+    date_str DATE NOT NULL,
+    availability FLOAT,
+    defect_rate FLOAT,
+    downtime_min FLOAT
+);
 ```
 
 ### 환경변수 설정 (`.env`, 프로젝트 루트)
@@ -140,3 +190,4 @@ python run.py
 ### 접속
 - 대시보드: http://127.0.0.1:5000
 - API 문서(Swagger): http://127.0.0.1:8000/docs
+- 헬스체크: http://127.0.0.1:8000/health
