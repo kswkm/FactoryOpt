@@ -1,105 +1,83 @@
 """
-Machine Uptime Dashboard Server
-Serves the factory machine uptime monitoring dashboard
+Machine Uptime Dashboard Server (Flask)
+DB에 직접 접속하지 않고, api_server.py가 제공하는 API만 호출한다.
 """
 import os
-import json
 from pathlib import Path
 from flask import Flask, render_template, jsonify
-import pandas as pd
+import requests
+from dotenv import load_dotenv
 
-# Initialize Flask app
+load_dotenv()
+
 app = Flask(__name__, template_folder='templates')
 
-# Get the directory where this script is located
 BASE_DIR = Path(__file__).resolve().parent
-CSV_FILE = BASE_DIR / 'machine_uptime_export.csv'
 
-# Global variable to cache the data
-_data_cache = None
+UPTIME_API_URL = os.environ.get("UPTIME_API_URL", "http://127.0.0.1:8000/api/machine-uptime")
+UPTIME_API_SUMMARY_URL = os.environ.get("UPTIME_API_SUMMARY_URL", "http://127.0.0.1:8000/api/summary")
 
-def load_data():
-    """Load and cache the CSV data"""
-    global _data_cache
-    if _data_cache is None:
-        if not CSV_FILE.exists():
-            raise FileNotFoundError(f"CSV file not found: {CSV_FILE}")
-        _data_cache = pd.read_csv(CSV_FILE)
-    return _data_cache
+TIMEOUT_SEC = 5
+
 
 @app.route('/')
 def index():
-    """Serve the main dashboard page"""
     return render_template('machine_uptime_dashboard.html')
+
 
 @app.route('/api/data')
 def get_data():
-    """API endpoint to get the full dataset"""
     try:
-        df = load_data()
-        return jsonify({
-            'success': True,
-            'data': df.to_dict('records'),
-            'columns': df.columns.tolist()
-        })
+        resp = requests.get(UPTIME_API_URL, timeout=TIMEOUT_SEC)
+        resp.raise_for_status()
+        payload = resp.json()
+        rows = payload.get("data", [])
+        columns = list(rows[0].keys()) if rows else []
+        return jsonify({'success': True, 'data': rows, 'columns': columns})
+    except requests.RequestException as e:
+        return jsonify({'success': False, 'error': f'API unreachable: {e}'}), 502
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/summary')
 def get_summary():
-    """API endpoint to get summary statistics"""
     try:
-        df = load_data()
-        summary = {
-            'total_records': len(df),
-            'machines': df['machine_id'].nunique(),
-            'avg_availability': df['availability'].mean(),
-            'avg_defect_rate': df['defect_rate'].mean(),
-            'total_downtime': df['downtime_min'].sum(),
-            'date_range': {
-                'start': df['date_str'].min(),
-                'end': df['date_str'].max()
-            }
-        }
-        return jsonify({'success': True, 'summary': summary})
+        resp = requests.get(UPTIME_API_SUMMARY_URL, timeout=TIMEOUT_SEC)
+        resp.raise_for_status()
+        return jsonify(resp.json())
+    except requests.RequestException as e:
+        return jsonify({'success': False, 'error': f'API unreachable: {e}'}), 502
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
 @app.errorhandler(404)
 def not_found(error):
-    """Handle 404 errors"""
     return jsonify({'error': 'Not found'}), 404
+
 
 @app.errorhandler(500)
 def server_error(error):
-    """Handle 500 errors"""
     return jsonify({'error': 'Internal server error'}), 500
+
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("🏭 Machine Uptime Dashboard Server")
+    print("🏭 Machine Uptime Dashboard Server (Flask -> API)")
     print("=" * 60)
     print(f"📁 Base Directory: {BASE_DIR}")
-    print(f"📊 Data File: {CSV_FILE}")
-    print(f"✅ Data File Exists: {CSV_FILE.exists()}")
-    print()
-    
-    # Test data loading
+    print(f"🔗 Uptime API: {UPTIME_API_URL}")
+
     try:
-        df = load_data()
-        print(f"✅ Successfully loaded {len(df)} records from CSV")
-        print(f"📅 Date Range: {df['date_str'].min()} to {df['date_str'].max()}")
-        print(f"🤖 Machines: {', '.join(sorted(df['machine_id'].unique()))}")
-        print()
+        r = requests.get(UPTIME_API_URL.rsplit('/api', 1)[0] + '/health', timeout=3)
+        print(f"✅ API health check: {r.json()}")
     except Exception as e:
-        print(f"❌ Error loading data: {e}")
-        print()
-    
+        print(f"⚠️  API server not reachable yet ({e}). Start api_server.py first.")
+
+    print()
     print("🚀 Starting server...")
     print("📱 Open http://127.0.0.1:5000 in your browser")
-    print("💾 Press Ctrl+C to stop the server")
     print("=" * 60)
-    print()
-    
-    # Run the Flask app
+
     app.run(debug=True, host='127.0.0.1', port=5000)

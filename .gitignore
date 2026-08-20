@@ -1,0 +1,38 @@
+# --- 환경변수 / 시크릿 (DB 자격증명 등, 절대 커밋 금지) ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# --- 가상환경 ---
+.venv/
+venv/
+env/
+
+# --- 데이터 파일 (필요시 조정 — CSV를 공유해야 하면 이 줄 삭제) ---
+*.csv
+machine_uptime_export.csv
+
+# --- IDE / 에디터 ---
+.vscode/
+.idea/
+*.swp
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- 로그 ---
+*.log
+
+# --- Flask ---
+instance/
+.flask_session/
